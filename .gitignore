@@ -1,0 +1,14 @@
+# Verilator output directory
+obj_dir/
+
+# Compiled executables
+Vcpu
+
+# Simulation traces
+*.vcd
+*.fst
+
+# IDE and OS files
+.vscode/
+.DS_Store
+*.swp
