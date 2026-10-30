@@ -286,6 +286,16 @@ module cpu(
                         6'h3F: begin // HALT
                             state <= HALTED;
                         end
+                        6'h24: begin // CHK r1, imm21: halt with r1 = 0x1BAD01, r2 = pc unless r1 < imm21 (unsigned)
+                            if (val1 >= {11'b0, ir[20:0]}) begin
+                                r[1] <= 32'h001BAD01;
+                                r[2] <= r[8];
+                                state <= HALTED;
+                            end else begin
+                                r[8] <= r[8] + 4;
+                                state <= FETCH;
+                            end
+                        end
                         default: begin
                             r[8] <= r[8] + 4;
                             state <= FETCH;
