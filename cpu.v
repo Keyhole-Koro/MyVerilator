@@ -34,8 +34,15 @@ module cpu(
                EXECUTE = 1, 
                MEM_READ_WAIT = 2, 
                MEM_WRITE_WAIT = 3, 
-               HALTED = 4;
+               HALTED = 4,
+               ATOMIC_READ_WAIT = 5,
+               ATOMIC_WRITE_WAIT = 6;
     reg [2:0] state;
+    reg [4:0] atomic_dest;
+    reg [31:0] atomic_expected;
+    reg [31:0] atomic_replacement;
+    reg atomic_is_cas;
+    reg [31:0] atomic_old;
 
     wire [31:0] ir = mem_rdata;
     wire [5:0] opcode = ir[31:26];
@@ -126,6 +133,23 @@ module cpu(
                             mem_wmask <= (4'b0001 << val1[1:0]);
                             mem_write <= 1;
                             state <= MEM_WRITE_WAIT;
+                        end
+                        6'h22: begin // SWP reg1, [reg2]
+                            mem_addr <= val2;
+                            mem_read <= 1;
+                            atomic_dest <= reg1;
+                            atomic_replacement <= val1;
+                            atomic_is_cas <= 0;
+                            state <= ATOMIC_READ_WAIT;
+                        end
+                        6'h23: begin // CAS reg1, reg2, [reg3]
+                            mem_addr <= (ir[15:11] <= 12) ? r[ir[15:11]] : 32'h0;
+                            mem_read <= 1;
+                            atomic_dest <= reg1;
+                            atomic_expected <= val1;
+                            atomic_replacement <= val2;
+                            atomic_is_cas <= 1;
+                            state <= ATOMIC_READ_WAIT;
                         end
                         6'h05: begin // ADD
                             if (reg1 <= 12) r[reg1] <= add_res;
@@ -285,6 +309,31 @@ module cpu(
                 MEM_WRITE_WAIT: begin
                     mem_write <= 0;
                     mem_wmask <= 4'b0000;
+                    r[8] <= r[8] + 4;
+                    state <= FETCH;
+                end
+
+                ATOMIC_READ_WAIT: begin
+                    mem_read <= 0;
+                    atomic_old <= mem_rdata;
+                    if (!atomic_is_cas || mem_rdata == atomic_expected) begin
+                        mem_wdata <= atomic_replacement;
+                        mem_wmask <= 4'b1111;
+                        mem_write <= 1;
+                        state <= ATOMIC_WRITE_WAIT;
+                    end else begin
+                        if (atomic_dest <= 12) r[atomic_dest] <= mem_rdata;
+                        r[11][0] <= (mem_rdata == 0);
+                        r[8] <= r[8] + 4;
+                        state <= FETCH;
+                    end
+                end
+
+                ATOMIC_WRITE_WAIT: begin
+                    mem_write <= 0;
+                    mem_wmask <= 4'b0000;
+                    if (atomic_dest <= 12) r[atomic_dest] <= atomic_old;
+                    r[11][0] <= (atomic_old == 0);
                     r[8] <= r[8] + 4;
                     state <= FETCH;
                 end
