@@ -109,6 +109,12 @@ module cpu(
                             r[8] <= r[8] + 4;
                             state <= FETCH;
                         end
+                        6'h25: begin // LUI r1, imm21: bits 31..11; ADDIS adds bits 10..0
+                            if (reg1 <= 12) r[reg1] <= {ir[20:0], 11'b0};
+                            r[11][0] <= (ir[20:0] == 0);
+                            r[8] <= r[8] + 4;
+                            state <= FETCH;
+                        end
                         6'h18: begin // MOVIS r1, imm21
                             if (reg1 <= 12) r[reg1] <= imm21_sext;
                             r[11][0] <= (imm21_sext == 0);
