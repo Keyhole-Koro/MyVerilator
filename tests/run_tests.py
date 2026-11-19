@@ -95,9 +95,12 @@ def cmp_setup(a, b):
     return prog
 
 
-def with_data(code, data):
-    """code の直後に data の語を置く。data[0] のアドレスを返す"""
-    return code + data, addr_of(len(code))
+def with_data(make_code, data):
+    """make_code(data のアドレス) で作ったコードの直後に data の語を置く"""
+    code_len = len(make_code(0))
+    code = make_code(addr_of(code_len))
+    assert len(code) == code_len
+    return code + data
 
 
 # --- テストケース ---
@@ -240,6 +243,77 @@ def build_cases():
         out(4),
         halt(),
     ], b"L")
+
+    # LD: 読んだデータではなく命令の reg1 に入る
+    case("ld_word", with_data(lambda d: load32(2, d) + [
+        rr(LD, 4, 2),
+    ] + emit_word(4) + [halt()], [0x44434241]), b"ABCD")
+    # 上位 6 ビットが LDB (0x1C) と同じデータでも語として読む
+    case("ld_word_with_ldb_bits", with_data(lambda d: load32(2, d) + [
+        rr(LD, 4, 2),
+    ] + emit_word(4) + [halt()], [0x70434241]), b"ABCp")
+    # ST したものを LD で読み戻す
+    case("st_then_ld", with_data(lambda d: load32(2, d) + [
+        ri(MOVI, 3, ord("A")),
+        rr(ST, 2, 3),
+        rr(LD, 4, 2),
+        out(4),
+        halt(),
+    ], [0]), b"A")
+    # LD の結果が 0 なら Z が立つ
+    case("ld_zero_sets_z", with_data(lambda d: load32(2, d) + [
+        ri(MOVI, 5, 1),        # Z をいったん下ろす
+        rr(LD, 4, 2),
+        jmp(JZ, 12),
+        ri(MOVI, 5, ord("N")),
+        jmp(JMP, 8),
+        ri(MOVI, 5, ord("Y")),
+        out(5),
+        halt(),
+    ], [0]), b"Y")
+
+    # LDB: 各バイトレーン
+    case("ldb_lanes", with_data(lambda d: load32(2, d) + [
+        rr(LDB, 4, 2), out(4), ri(ADDIS, 2, 1),
+        rr(LDB, 4, 2), out(4), ri(ADDIS, 2, 1),
+        rr(LDB, 4, 2), out(4), ri(ADDIS, 2, 1),
+        rr(LDB, 4, 2), out(4),
+        halt(),
+    ], [0x44434241]), b"ABCD")
+    # LDB はゼロ拡張する
+    case("ldb_zero_extends", with_data(lambda d: load32(2, d + 1) + [
+        rr(LDB, 4, 2),
+    ] + emit_word(4) + [halt()], [0xFFFFC1FF]), b"\xc1\x00\x00\x00")
+    case("stack_stb_ldb", load32(2, 0x7FFFFF02) + [
+        ri(MOVI, 3, ord("C")),
+        rr(STB, 2, 3),
+        rr(LDB, 4, 2),
+        out(4),
+        halt(),
+    ], b"C")
+
+    # PUSH / POP: 後に入れたものから出てくる
+    case("push_pop", [
+        ri(MOVI, 1, ord("A")),
+        ri(MOVI, 2, ord("B")),
+        rr(PUSH, 1),
+        rr(PUSH, 2),
+        rr(POP, 4),
+        rr(POP, 5),
+        out(4),
+        out(5),
+        halt(),
+    ], b"BA")
+
+    # IN: ハーネスは I/O の読み出しに 0 を返す。結果は命令の reg1 に入る
+    case("in", [
+        ri(MOVI, 4, ord("X")),
+        ri(MOVI, 5, ord("A")),
+        ri(IN, 4, 0),          # r4 = 0
+        rr(ADD, 4, 5),
+        out(4),
+        halt(),
+    ], b"A")
 
     # CHK: r1 < imm なら続行、そうでなければ停止
     case("chk_pass", [ri(MOVI, 1, 3), ri(CHK, 1, 4), ri(MOVI, 5, ord("P")), out(5), halt()], b"P")
