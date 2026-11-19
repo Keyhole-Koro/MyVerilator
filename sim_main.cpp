@@ -32,8 +32,9 @@ int main(int argc, char** argv) {
         rom[5] = (0x3F << 26);
     }
 
-    // スタック等のためのRAM空間 (0x7FFF0000〜)
-    std::vector<uint32_t> stack_ram(1024, 0); 
+    // スタック等のためのRAM空間 (0x7FFF0000〜0x7FFFFFFF, 64KB)
+    // リセット直後の SP (0x7FFFFFFF) の直下から PUSH できるよう 0x80000000 の手前までを含める
+    std::vector<uint32_t> stack_ram(64 * 1024 / 4, 0);
     const uint32_t STACK_BASE = 0x7FFF0000;
 
     // CPUのリセット

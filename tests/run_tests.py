@@ -212,6 +212,35 @@ def build_cases():
     assert len(code) == code_len
     case("cas", code + [ord("A")], b"ABB")
 
+    # スタック RAM: リセット直後の SP (0x7FFFFFFF) の直下に PUSH できる。
+    # LD を使わず SWP で読み戻す
+    case("push_then_swp", [
+        ri(MOVI, 1, ord("B")),
+        rr(PUSH, 1),
+        rr(MOV, 2, 9),         # r2 = SP
+        rr(SWP, 3, 2),         # r3 = PUSH した値
+        out(3),
+        halt(),
+    ], b"B")
+    # STB でスタック領域の 1 バイトだけを書く
+    case("stack_stb_swp", load32(2, 0x7FFFFF01) + [
+        ri(MOVI, 3, ord("B")),
+        rr(STB, 2, 3),
+        rr(SWP, 4, 2),         # r4 = 0x00004200
+        rr(SHR, 4), rr(SHR, 4), rr(SHR, 4), rr(SHR, 4),
+        rr(SHR, 4), rr(SHR, 4), rr(SHR, 4), rr(SHR, 4),
+        out(4),
+        halt(),
+    ], b"B")
+    # 以前から使えた 0x7FFF0000 付近もそのまま使える
+    case("stack_low_region", load32(2, 0x7FFF0000) + [
+        ri(MOVI, 3, ord("L")),
+        rr(ST, 2, 3),
+        rr(SWP, 4, 2),
+        out(4),
+        halt(),
+    ], b"L")
+
     # CHK: r1 < imm なら続行、そうでなければ停止
     case("chk_pass", [ri(MOVI, 1, 3), ri(CHK, 1, 4), ri(MOVI, 5, ord("P")), out(5), halt()], b"P")
     case("chk_fail_halts",
