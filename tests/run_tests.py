@@ -365,8 +365,36 @@ def test_default_program(vcpu, workdir):
             raise AssertionError(f"missing {want!r} in {lines!r}")
 
 
+ROM_SIZE = 1024 * 1024
+
+
+def test_rom_exactly_full(vcpu, workdir):
+    path = os.path.join(workdir, "full.bin")
+    with open(path, "wb") as f:
+        f.write(struct.pack("<II", ri(MOVI, 1, ord("F")), out(1)))
+        f.write(struct.pack("<I", halt()))
+        f.write(b"\0" * (ROM_SIZE - 12))
+    got = run_file(vcpu, path, ROM_SIZE)
+    if got != b"F":
+        raise AssertionError(f"got {got!r}")
+
+
+def test_rom_too_large(vcpu, workdir):
+    path = os.path.join(workdir, "too_large.bin")
+    with open(path, "wb") as f:
+        f.write(struct.pack("<I", halt()))
+        f.write(b"\0" * (ROM_SIZE - 4 + 4))
+    res = subprocess.run([vcpu, path], capture_output=True, timeout=TIMEOUT_SEC)
+    if res.returncode == 0:
+        raise AssertionError("expected a non-zero exit code")
+    if b"too large" not in res.stderr:
+        raise AssertionError(f"unexpected stderr: {res.stderr!r}")
+
+
 SPECIAL_TESTS = [
     ("hello_bin", test_hello),
+    ("rom_exactly_full", test_rom_exactly_full),
+    ("rom_too_large", test_rom_too_large),
     ("default_program", test_default_program),
 ]
 

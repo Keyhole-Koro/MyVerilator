@@ -17,7 +17,14 @@ int main(int argc, char** argv) {
         std::ifstream file(argv[1], std::ios::binary);
         if (file.is_open()) {
             file.read(reinterpret_cast<char*>(rom.data()), rom.size() * 4);
-            std::cout << "[Simulator] Loaded " << file.gcount() << " bytes from " << argv[1] << std::endl;
+            const std::streamsize loaded = file.gcount(); // peek() で gcount() が変わるので先に取る
+            // ROM に入りきらない分を黙って捨てない
+            if (file.peek() != std::ifstream::traits_type::eof()) {
+                std::cerr << "Program too large: " << argv[1]
+                          << " (max " << rom.size() * 4 << " bytes)" << std::endl;
+                return 1;
+            }
+            std::cout << "[Simulator] Loaded " << loaded << " bytes from " << argv[1] << std::endl;
         } else {
             std::cerr << "Failed to open file: " << argv[1] << std::endl;
             return 1;
