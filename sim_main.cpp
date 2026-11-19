@@ -37,6 +37,16 @@ int main(int argc, char** argv) {
     std::vector<uint32_t> stack_ram(64 * 1024 / 4, 0);
     const uint32_t STACK_BASE = 0x7FFF0000;
 
+    // アドレスから読み出す値 (マップされていない領域は 0)
+    auto read_mem = [&](uint32_t addr) -> uint32_t {
+        if (addr >= 0x20000000 && addr < 0x20000000 + rom.size() * 4) {
+            return rom[(addr - 0x20000000) / 4];
+        } else if (addr >= STACK_BASE && addr < STACK_BASE + stack_ram.size() * 4) {
+            return stack_ram[(addr - STACK_BASE) / 4];
+        }
+        return 0;
+    };
+
     // CPUのリセット
     top->rst = 1;
     top->clk = 0;
@@ -56,15 +66,7 @@ int main(int argc, char** argv) {
         
         // --- メモリ Read 処理 ---
         if (top->mem_read) {
-            if (top->mem_addr >= 0x20000000 && top->mem_addr < 0x20000000 + rom.size() * 4) {
-                uint32_t word_addr = (top->mem_addr - 0x20000000) / 4;
-                top->mem_rdata = rom[word_addr];
-            } else if (top->mem_addr >= STACK_BASE && top->mem_addr < STACK_BASE + stack_ram.size() * 4) {
-                uint32_t word_addr = (top->mem_addr - STACK_BASE) / 4;
-                top->mem_rdata = stack_ram[word_addr];
-            } else {
-                top->mem_rdata = 0; 
-            }
+            top->mem_rdata = read_mem(top->mem_addr);
         }
 
         // --- メモリ/IO Write 処理 ---
@@ -108,9 +110,10 @@ int main(int argc, char** argv) {
         // ファイルを指定せずに実行した場合のみ、以前のような詳細なデバッグ出力を出す
         if (argc == 1) {
             if (top->mem_read && idle_counter == 0) {
+                // mem_rdata が渡されるのは次の立ち下がりなので、渡す予定の値を表示する
                 std::cout << "Tick: " << std::setw(2) << tickcount 
                           << " | Read  Addr: 0x" << std::hex << top->mem_addr 
-                          << " -> Data: 0x" << top->mem_rdata << std::dec << std::endl;
+                          << " -> Data: 0x" << read_mem(top->mem_addr) << std::dec << std::endl;
             }
             if (top->mem_write && top->mem_addr != 0x24000000) {
                 std::cout << "Tick: " << std::setw(2) << tickcount 

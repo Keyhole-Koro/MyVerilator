@@ -358,9 +358,11 @@ def test_default_program(vcpu, workdir):
     if res.returncode != 0:
         raise AssertionError(f"exit code {res.returncode}")
     lines = res.stdout.decode().splitlines()
-    want = "Tick:  7 | Write Addr: 0x7ffffffb <- Data: 0x1e (Mask: 0xf)"
-    if want not in lines:
-        raise AssertionError(f"missing {want!r} in {lines!r}")
+    # PUSH (10 + 20 = 0x1e) と、その値を読む POP
+    for want in ("Tick:  7 | Write Addr: 0x7ffffffb <- Data: 0x1e (Mask: 0xf)",
+                 "Tick: 10 | Read  Addr: 0x7ffffffb -> Data: 0x1e"):
+        if want not in lines:
+            raise AssertionError(f"missing {want!r} in {lines!r}")
 
 
 SPECIAL_TESTS = [
