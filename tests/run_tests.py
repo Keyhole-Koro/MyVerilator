@@ -25,6 +25,8 @@ AND, OR, XOR, SHL, SHR = 0x08, 0x09, 0x0A, 0x0B, 0x0C
 JMP, JZ, JNZ, JG, JL, JA, JB = 0x0D, 0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13
 PUSH, POP, IN, OUT, MOVIS, ADDIS = 0x14, 0x15, 0x16, 0x17, 0x18, 0x19
 LDB, STB, SWP, CAS, CHK, LUI, HALT = 0x1C, 0x1D, 0x22, 0x23, 0x24, 0x25, 0x3F
+CALL = 0x1B
+PC, LR = 8, 12
 
 
 def rr(op, r1, r2=0, r3=0):
@@ -319,6 +321,43 @@ def build_cases():
     case("chk_pass", [ri(MOVI, 1, 3), ri(CHK, 1, 4), ri(MOVI, 5, ord("P")), out(5), halt()], b"P")
     case("chk_fail_halts",
          [ri(MOVI, 5, ord("P")), out(5), ri(MOVI, 1, 4), ri(CHK, 1, 4), out(5), halt()], b"P")
+
+    # PC: エミュレータと同じく、命令を実行する前に次の命令へ進んでいる。
+    # CALL の LR は次の命令、PC を読むと次の命令のアドレス、PC に書くとそこへ飛ぶ
+    case("call_links_next_instruction", [
+        jmp(CALL, 8),          # -> mov r1, lr
+        halt(),                # LR はここ
+        rr(MOV, 1, LR),
+    ] + emit_word(1) + [halt()], struct.pack("<I", addr_of(1)))
+    case("pc_reads_next_instruction",
+         [rr(MOV, 1, PC)] + emit_word(1) + [halt()], struct.pack("<I", addr_of(1)))
+    case("mov_to_pc_jumps", load32(1, addr_of(6)) + [
+        rr(MOV, PC, 1),        # -> movi r5, 'Y'
+        ri(MOVI, 5, ord("N")),
+        out(5),
+        halt(),
+        ri(MOVI, 5, ord("Y")),
+        out(5),
+        halt(),
+    ], b"Y")
+    case("pop_to_pc_jumps", load32(1, addr_of(7)) + [
+        rr(PUSH, 1),
+        rr(POP, PC),           # -> movi r5, 'Y'
+        ri(MOVI, 5, ord("N")),
+        out(5),
+        halt(),
+        ri(MOVI, 5, ord("Y")),
+        out(5),
+        halt(),
+    ], b"Y")
+    # 関数の呼び出しと戻り (コンパイラが出す `call` と `mov pc, lr`)
+    case("call_and_return", [
+        jmp(CALL, 12),         # -> movi r5, 'C'
+        out(5),                # 戻り先
+        halt(),
+        ri(MOVI, 5, ord("C")),
+        rr(MOV, PC, LR),
+    ], b"C")
 
 
 # --- 実行 ---

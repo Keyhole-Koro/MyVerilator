@@ -56,8 +56,15 @@ module cpu(
     wire [31:0] imm21_sext = {{11{ir[20]}}, ir[20:0]};
     wire [31:0] imm26_sext = {{6{ir[25]}}, ir[25:0]};
     
-    wire [31:0] val1 = (reg1 <= 12) ? r[reg1] : 32'h0;
-    wire [31:0] val2 = (reg2 <= 12) ? r[reg2] : 32'h0;
+    // The emulator advances PC before it executes an instruction, so an
+    // operand naming PC reads the next instruction's address (pc_next), and
+    // a result written to PC is where execution goes on: each register write
+    // comes after the PC increment, which it then replaces.
+    wire [31:0] pc_next = r[8] + 4;
+    wire [4:0]  reg3    = ir[15:11];
+    wire [31:0] val1 = (reg1 == 8) ? pc_next : (reg1 <= 12) ? r[reg1] : 32'h0;
+    wire [31:0] val2 = (reg2 == 8) ? pc_next : (reg2 <= 12) ? r[reg2] : 32'h0;
+    wire [31:0] val3 = (reg3 == 8) ? pc_next : (reg3 <= 12) ? r[reg3] : 32'h0;
 
     // ALU results
     wire [31:0] add_res = val1 + val2;
@@ -102,27 +109,27 @@ module cpu(
                     
                     case (opcode)
                         6'h01: begin // MOV r1, r2
+                            r[8] <= r[8] + 4;
                             if (reg1 <= 12) r[reg1] <= val2;
                             r[11][0] <= (val2 == 0); 
-                            r[8] <= r[8] + 4;
                             state <= FETCH;
                         end
                         6'h02: begin // MOVI r1, imm21
+                            r[8] <= r[8] + 4;
                             if (reg1 <= 12) r[reg1] <= {11'b0, ir[20:0]};
                             r[11][0] <= (ir[20:0] == 0);
-                            r[8] <= r[8] + 4;
                             state <= FETCH;
                         end
                         6'h25: begin // LUI r1, imm21: bits 31..11; ADDIS adds bits 10..0
+                            r[8] <= r[8] + 4;
                             if (reg1 <= 12) r[reg1] <= {ir[20:0], 11'b0};
                             r[11][0] <= (ir[20:0] == 0);
-                            r[8] <= r[8] + 4;
                             state <= FETCH;
                         end
                         6'h18: begin // MOVIS r1, imm21
+                            r[8] <= r[8] + 4;
                             if (reg1 <= 12) r[reg1] <= imm21_sext;
                             r[11][0] <= (imm21_sext == 0);
-                            r[8] <= r[8] + 4;
                             state <= FETCH;
                         end
                         6'h03, 6'h1C: begin // LD, LDB
@@ -155,7 +162,7 @@ module cpu(
                             state <= ATOMIC_READ_WAIT;
                         end
                         6'h23: begin // CAS reg1, reg2, [reg3]
-                            mem_addr <= (ir[15:11] <= 12) ? r[ir[15:11]] : 32'h0;
+                            mem_addr <= val3;
                             mem_read <= 1;
                             atomic_dest <= reg1;
                             atomic_expected <= val1;
@@ -164,24 +171,24 @@ module cpu(
                             state <= ATOMIC_READ_WAIT;
                         end
                         6'h05: begin // ADD
+                            r[8] <= r[8] + 4;
                             if (reg1 <= 12) r[reg1] <= add_res;
                             r[11][0] <= (add_res == 0);
-                            r[8] <= r[8] + 4;
                             state <= FETCH;
                         end
                         6'h19: begin // ADDIS
+                            r[8] <= r[8] + 4;
                             if (reg1 <= 12) r[reg1] <= addis_res;
                             r[11][0] <= (addis_res == 0);
-                            r[8] <= r[8] + 4;
                             state <= FETCH;
                         end
                         6'h06: begin // SUB
+                            r[8] <= r[8] + 4;
                             if (reg1 <= 12) r[reg1] <= sub_res;
                             r[11][0] <= alu_z;
                             r[11][1] <= alu_n;
                             r[11][2] <= alu_c;
                             r[11][3] <= alu_v;
-                            r[8] <= r[8] + 4;
                             state <= FETCH;
                         end
                         6'h07: begin // CMP
@@ -193,33 +200,33 @@ module cpu(
                             state <= FETCH;
                         end
                         6'h08: begin // AND
+                            r[8] <= r[8] + 4;
                             if (reg1 <= 12) r[reg1] <= val1 & val2;
                             r[11][0] <= ((val1 & val2) == 0);
-                            r[8] <= r[8] + 4;
                             state <= FETCH;
                         end
                         6'h09: begin // OR
+                            r[8] <= r[8] + 4;
                             if (reg1 <= 12) r[reg1] <= val1 | val2;
                             r[11][0] <= ((val1 | val2) == 0);
-                            r[8] <= r[8] + 4;
                             state <= FETCH;
                         end
                         6'h0A: begin // XOR
+                            r[8] <= r[8] + 4;
                             if (reg1 <= 12) r[reg1] <= val1 ^ val2;
                             r[11][0] <= ((val1 ^ val2) == 0);
-                            r[8] <= r[8] + 4;
                             state <= FETCH;
                         end
                         6'h0B: begin // SHL
+                            r[8] <= r[8] + 4;
                             if (reg1 <= 12) r[reg1] <= val1 << 1;
                             r[11][0] <= ((val1 << 1) == 0);
-                            r[8] <= r[8] + 4;
                             state <= FETCH;
                         end
                         6'h0C: begin // SHR
+                            r[8] <= r[8] + 4;
                             if (reg1 <= 12) r[reg1] <= val1 >> 1;
                             r[11][0] <= ((val1 >> 1) == 0);
-                            r[8] <= r[8] + 4;
                             state <= FETCH;
                         end
                         6'h0D: begin // JMP
@@ -251,7 +258,7 @@ module cpu(
                             state <= FETCH;
                         end
                         6'h1B: begin // CALL
-                            r[12] <= r[8]; // LR = PC
+                            r[12] <= pc_next; // LR = the instruction after the CALL
                             r[8] <= r[8] + imm26_sext;
                             state <= FETCH;
                         end
@@ -321,6 +328,7 @@ module cpu(
                 
                 MEM_READ_WAIT: begin
                     mem_read <= 0;
+                    r[8] <= r[8] + 4; // before the load's result, which may be PC
                     if (load_is_byte) begin // LDB
                         if (load_dest <= 12) r[load_dest] <= {24'b0, byte_val};
                         r[11][0] <= (byte_val == 0);
@@ -328,7 +336,6 @@ module cpu(
                         if (load_dest <= 12) r[load_dest] <= mem_rdata;
                         r[11][0] <= (mem_rdata == 0);
                     end
-                    r[8] <= r[8] + 4;
                     state <= FETCH;
                 end
                 
@@ -348,9 +355,9 @@ module cpu(
                         mem_write <= 1;
                         state <= ATOMIC_WRITE_WAIT;
                     end else begin
+                        r[8] <= r[8] + 4;
                         if (atomic_dest <= 12) r[atomic_dest] <= mem_rdata;
                         r[11][0] <= (mem_rdata == 0);
-                        r[8] <= r[8] + 4;
                         state <= FETCH;
                     end
                 end
@@ -358,9 +365,9 @@ module cpu(
                 ATOMIC_WRITE_WAIT: begin
                     mem_write <= 0;
                     mem_wmask <= 4'b0000;
+                    r[8] <= r[8] + 4;
                     if (atomic_dest <= 12) r[atomic_dest] <= atomic_old;
                     r[11][0] <= (atomic_old == 0);
-                    r[8] <= r[8] + 4;
                     state <= FETCH;
                 end
                 
