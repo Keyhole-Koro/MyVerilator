@@ -43,6 +43,10 @@ module cpu(
     reg [31:0] atomic_replacement;
     reg atomic_is_cas;
     reg [31:0] atomic_old;
+    // ir follows mem_rdata, so in MEM_READ_WAIT it holds the loaded data, not
+    // the instruction: keep what the load needs from EXECUTE.
+    reg [4:0] load_dest;
+    reg load_is_byte;
 
     wire [31:0] ir = mem_rdata;
     wire [5:0] opcode = ir[31:26];
@@ -124,6 +128,8 @@ module cpu(
                         6'h03, 6'h1C: begin // LD, LDB
                             mem_addr <= val2;
                             mem_read <= 1;
+                            load_dest <= reg1;
+                            load_is_byte <= (opcode == 6'h1C);
                             state <= MEM_READ_WAIT;
                         end
                         6'h04: begin // ST
@@ -260,12 +266,16 @@ module cpu(
                         6'h15: begin // POP r1
                             mem_addr <= r[9];
                             mem_read <= 1;
+                            load_dest <= reg1;
+                            load_is_byte <= 0;
                             r[9] <= r[9] + 4;
                             state <= MEM_READ_WAIT;
                         end
                         6'h16: begin // IN
                             mem_addr <= 32'h24000000 + {11'b0, ir[20:0]};
                             mem_read <= 1;
+                            load_dest <= reg1;
+                            load_is_byte <= 0;
                             state <= MEM_READ_WAIT;
                         end
                         6'h17: begin // OUT
@@ -311,11 +321,11 @@ module cpu(
                 
                 MEM_READ_WAIT: begin
                     mem_read <= 0;
-                    if (opcode == 6'h1C) begin // LDB
-                        if (reg1 <= 12) r[reg1] <= {24'b0, byte_val};
+                    if (load_is_byte) begin // LDB
+                        if (load_dest <= 12) r[load_dest] <= {24'b0, byte_val};
                         r[11][0] <= (byte_val == 0);
                     end else begin
-                        if (reg1 <= 12) r[reg1] <= mem_rdata;
+                        if (load_dest <= 12) r[load_dest] <= mem_rdata;
                         r[11][0] <= (mem_rdata == 0);
                     end
                     r[8] <= r[8] + 4;
